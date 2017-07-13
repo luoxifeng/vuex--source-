@@ -1,5 +1,5 @@
 # Vuex [![Build Status](https://circleci.com/gh/vuejs/vuex/tree/dev.png?style=shield)](https://circleci.com/gh/vuejs/vuex)
-
+（本仓库是download Vuex源码，根据自己的理解添加的注释，仅供自己学习所用）
 > Centralized State Management for Vue.js.
 
 <p align="center">
