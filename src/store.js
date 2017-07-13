@@ -419,18 +419,20 @@ function installModule(store, rootState, path, module, hot) {
     //如果path长度是0，说明是根store模块
     const isRoot = !path.length
     //获取命名空间
-    const namespace = store
-        ._modules
-        .getNamespace(path)
+    const namespace = store._modules.getNamespace(path)
 
     /**
-     * 注册模块的命名空间
+     * 只有在配置了namespaced属性的模块，才会映射到store实例_modulesNamespaceMap属性上
+     * 维护一个使用了命名空间的模块的集合
      */
     // register in namespace map
     if (module.namespaced) {
         store._modulesNamespaceMap[namespace] = module
     }
 
+    /**
+     * 把子模块的state设置到父模块的state上面
+     */
     // set state
     if (!isRoot && !hot) {
         const parentState = getNestedState(rootState, path.slice(0, -1))
@@ -440,6 +442,9 @@ function installModule(store, rootState, path, module, hot) {
         })
     }
 
+    /**
+     * 
+     */
     const local = module.context = makeLocalContext(store, namespace, path)
 
     module.forEachMutation((mutation, key) => {
@@ -457,40 +462,52 @@ function installModule(store, rootState, path, module, hot) {
         registerGetter(store, namespacedType, getter, local)
     })
 
+    /**
+     * 递归安装模块
+     */
     module.forEachChild((child, key) => {
         installModule(store, rootState, path.concat(key), child, hot)
     })
 }
 
+
+/**
+ * 造一个本地化的上下文
+ */
 /**
  * make localized dispatch, commit, getters and state
  * if there is no namespace, just use root ones
  */
 function makeLocalContext(store, namespace, path) {
     const noNamespace = namespace === ''
-
+    /**
+     * 如果我们没有配置使用命名空间，那么我们在不同层级配置的所有同名的action和mutation
+     * 会被推到store实例上面的_actions或者_mutations的相应key值所对应的队列里面，
+     * 就是说我们配置的所有的同名的action或者mutation会在一个数组里面，
+     * 当我们调用commit或者dispatch时候，会一次执行数组里面的方法
+     * 
+     * 当我们配置使用命名空间的时候，在_action或者_mutations里面会保存带命名空间的key,
+     * 在我们调用时，会自动加上命名空间
+     */
     const local = {
-        dispatch: noNamespace
-            ? store.dispatch
-            : (_type, _payload, _options) => {
-                const args = unifyObjectStyle(_type, _payload, _options)
-                const {payload, options} = args
-                let {type} = args
+      
+        dispatch: noNamespace ? store.dispatch : (_type, _payload, _options) => {
+            const args = unifyObjectStyle(_type, _payload, _options)
+            const {payload, options} = args
+            let {type} = args
 
-                if (!options || !options.root) {
-                    type = namespace + type
-                    if (process.env.NODE_ENV !== 'production' && !store._actions[type]) {
-                        console.error(`[vuex] unknown local action type: ${args.type}, global type: ${type}`)
-                        return
-                    }
+            if (!options || !options.root) {
+                type = namespace + type
+                if (process.env.NODE_ENV !== 'production' && !store._actions[type]) {
+                    console.error(`[vuex] unknown local action type: ${args.type}, global type: ${type}`)
+                    return
                 }
+            }
 
-                return store.dispatch(type, payload)
-            },
+            return store.dispatch(type, payload)
+        },
 
-        commit: noNamespace
-            ? store.commit
-            : (_type, _payload, _options) => {
+        commit: noNamespace? store.commit: (_type, _payload, _options) => {
                 const args = unifyObjectStyle(_type, _payload, _options)
                 const {payload, options} = args
                 let {type} = args
@@ -511,9 +528,7 @@ function makeLocalContext(store, namespace, path) {
     // by vm update
     Object.defineProperties(local, {
         getters: {
-            get: noNamespace
-                ? () => store.getters
-                : () => makeLocalGetters(store, namespace)
+            get: noNamespace? () => store.getters: () => makeLocalGetters(store, namespace)
         },
         state: {
             get: () => getNestedState(store.state, path)
@@ -527,9 +542,7 @@ function makeLocalGetters(store, namespace) {
     const gettersProxy = {}
 
     const splitPos = namespace.length
-    Object
-        .keys(store.getters)
-        .forEach(type => {
+    Object.keys(store.getters).forEach(type => {
             // skip if the target getter is not match this namespace
             if (type.slice(0, splitPos) !== namespace) 
                 return
@@ -548,8 +561,24 @@ function makeLocalGetters(store, namespace) {
     return gettersProxy
 }
 
+/**
+ * 在store._mutations 注册
+ * @param {*} store 
+ * @param {*} type 
+ * @param {*} handler 
+ * @param {*} local 
+ */
 function registerMutation(store, type, handler, local) {
+    /**
+     * store._mutations，是一个数组维护所有模块的mutations
+     * 
+     */
+    
     const entry = store._mutations[type] || (store._mutations[type] = [])
+
+    /**
+     * 我们commit的时候，
+     */
     entry.push(function wrappedMutationHandler(payload) {
         handler(local.state, payload)
     })
@@ -599,8 +628,7 @@ function registerGetter(store, type, rawGetter, local) {
 }
 
 function enableStrictMode(store) {
-    store
-        ._vm
+    store._vm
         .$watch(function () {
             return this._data.$$state
         }, () => {
@@ -614,9 +642,7 @@ function enableStrictMode(store) {
 }
 
 function getNestedState(state, path) {
-    return path.length
-        ? path.reduce((state, key) => state[key], state)
-        : state
+    return path.length ? path.reduce((state, key) => state[key], state) : state
 }
 
 /**
